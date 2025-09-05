@@ -123,11 +123,21 @@ void IDFUARTComponent::setup() {
   int8_t tx = this->tx_pin_ != nullptr ? this->tx_pin_->get_pin() : -1;
   int8_t rx = this->rx_pin_ != nullptr ? this->rx_pin_->get_pin() : -1;
 
+  ESP_LOGD(TAG, "uart_param: tx=%d, rx=%d", tx, rx);
+
+  int8_t rts = this->rts_pin_ != nullptr ? this->rts_pin_->get_pin() : UART_PIN_NO_CHANGE;
+  int8_t cts = this->cts_pin_ != nullptr ? this->cts_pin_->get_pin() : UART_PIN_NO_CHANGE;
+  ESP_LOGD(TAG, "uart_param: rts=%d, cts=%d", rts, cts);
+
   uint32_t invert = 0;
   if (this->tx_pin_ != nullptr && this->tx_pin_->is_inverted())
     invert |= UART_SIGNAL_TXD_INV;
   if (this->rx_pin_ != nullptr && this->rx_pin_->is_inverted())
     invert |= UART_SIGNAL_RXD_INV;
+  if (this->cts_pin_ != nullptr && this->cts_pin_->is_inverted())
+    invert |= UART_SIGNAL_CTS_INV;
+  if (this->rts_pin_ != nullptr && this->rts_pin_->is_inverted())
+    invert |= UART_SIGNAL_RTS_INV;
 
   err = uart_set_line_inverse(this->uart_num_, invert);
   if (err != ESP_OK) {
@@ -136,7 +146,7 @@ void IDFUARTComponent::setup() {
     return;
   }
 
-  err = uart_set_pin(this->uart_num_, tx, rx, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
+  err = uart_set_pin(this->uart_num_, tx, rx, rts, cts);
   if (err != ESP_OK) {
     ESP_LOGW(TAG, "uart_set_pin failed: %s", esp_err_to_name(err));
     this->mark_failed();
