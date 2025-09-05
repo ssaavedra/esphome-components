@@ -1,6 +1,7 @@
 #ifdef USE_ESP_IDF
 
 #include "uart_component_esp_idf.h"
+#include <cinttypes>
 #include "esphome/core/application.h"
 #include "esphome/core/defines.h"
 #include "esphome/core/helpers.h"
@@ -16,10 +17,11 @@ static const char *const TAG = "uart.idf";
 
 uart_config_t IDFUARTComponent::get_config_() {
   uart_parity_t parity = UART_PARITY_DISABLE;
-  if (this->parity_ == UART_CONFIG_PARITY_EVEN)
+  if (this->parity_ == UART_CONFIG_PARITY_EVEN) {
     parity = UART_PARITY_EVEN;
-  else if (this->parity_ == UART_CONFIG_PARITY_ODD)
+  } else if (this->parity_ == UART_CONFIG_PARITY_ODD) {
     parity = UART_PARITY_ODD;
+  }
 
   uart_word_length_t data_bits;
   switch (this->data_bits_) {
@@ -39,7 +41,7 @@ uart_config_t IDFUARTComponent::get_config_() {
       data_bits = UART_DATA_BITS_MAX;
       break;
   }
-
+  
   uart_hw_flowcontrol_t hw_flowctrl;
   switch (this->hw_flowctrl_) {
     case UART_CONFIG_HW_FLOWCTRL_RTS:
@@ -59,13 +61,13 @@ uart_config_t IDFUARTComponent::get_config_() {
       break;
   }
 
-  uart_config_t uart_config;
+  uart_config_t uart_config{};
   uart_config.baud_rate = this->baud_rate_;
   uart_config.data_bits = data_bits;
   uart_config.parity = parity;
   uart_config.stop_bits = this->stop_bits_ == 1 ? UART_STOP_BITS_1 : UART_STOP_BITS_2;
   uart_config.flow_ctrl = hw_flowctrl;
-  uart_config.source_clk = UART_SCLK_APB;
+  uart_config.source_clk = UART_SCLK_DEFAULT;
   uart_config.rx_flow_ctrl_thresh = 122;
 
   return uart_config;
@@ -73,18 +75,36 @@ uart_config_t IDFUARTComponent::get_config_() {
 
 void IDFUARTComponent::setup() {
   static uint8_t next_uart_num = 0;
+
 #ifdef USE_LOGGER
-  if (logger::global_logger->get_uart_num() == next_uart_num)
+  bool logger_uses_hardware_uart = true;
+
+#ifdef USE_LOGGER_USB_CDC
+  if (logger::global_logger->get_uart() == logger::UART_SELECTION_USB_CDC) {
+    // this is not a hardware UART, ignore it
+    logger_uses_hardware_uart = false;
+  }
+#endif  // USE_LOGGER_USB_CDC
+
+#ifdef USE_LOGGER_USB_SERIAL_JTAG
+  if (logger::global_logger->get_uart() == logger::UART_SELECTION_USB_SERIAL_JTAG) {
+    // this is not a hardware UART, ignore it
+    logger_uses_hardware_uart = false;
+  }
+#endif  // USE_LOGGER_USB_SERIAL_JTAG
+
+  if (logger_uses_hardware_uart && logger::global_logger->get_baud_rate() > 0 &&
+      logger::global_logger->get_uart_num() == next_uart_num) {
     next_uart_num++;
-#endif
-  if (next_uart_num >= UART_NUM_MAX) {
-    ESP_LOGW(TAG, "Maximum number of UART components created already.");
+  }
+#endif  // USE_LOGGER
+
+  if (next_uart_num >= SOC_UART_NUM) {
+    ESP_LOGW(TAG, "Maximum number of UART components created already");
     this->mark_failed();
     return;
   }
-  this->uart_num_ = next_uart_num++;
-  ESP_LOGCONFIG(TAG, "Setting up UART %u...", this->uart_num_);
-
+  this->uart_num_ = static_cast<uart_port_t>(next_uart_num++);
   this->lock_ = xSemaphoreCreateMutex();
 
   xSemaphoreTake(this->lock_, portMAX_DELAY);
@@ -97,24 +117,10 @@ void IDFUARTComponent::setup() {
     return;
   }
 
-  err = uart_driver_install(this->uart_num_, this->rx_buffer_size_, 0, 0, nullptr, 0);
-  if (err != ESP_OK) {
-    ESP_LOGW(TAG, "uart_driver_install failed: %s", esp_err_to_name(err));
-    this->mark_failed();
-    return;
-  }
-
   int8_t tx = this->tx_pin_ != nullptr ? this->tx_pin_->get_pin() : -1;
   int8_t rx = this->rx_pin_ != nullptr ? this->rx_pin_->get_pin() : -1;
-  int8_t cts = this->cts_pin_ != nullptr ? this->cts_pin_->get_pin() : UART_PIN_NO_CHANGE;
   int8_t rts = this->rts_pin_ != nullptr ? this->rts_pin_->get_pin() : UART_PIN_NO_CHANGE;
-
-  err = uart_set_pin(this->uart_num_, tx, rx, rts, cts);
-  if (err != ESP_OK) {
-    ESP_LOGW(TAG, "uart_set_pin failed: %s", esp_err_to_name(err));
-    this->mark_failed();
-    return;
-  }
+  int8_t cts = this->cts_pin_ != nullptr ? this->cts_pin_->get_pin() : UART_PIN_NO_CHANGE;
 
   uint32_t invert = 0;
   if (this->tx_pin_ != nullptr && this->tx_pin_->is_inverted())
@@ -133,12 +139,43 @@ void IDFUARTComponent::setup() {
     return;
   }
 
+  err = uart_set_pin(this->uart_num_, tx, rx, rts, cts);
+  if (err != ESP_OK) {
+    ESP_LOGW(TAG, "uart_set_pin failed: %s", esp_err_to_name(err));
+    this->mark_failed();
+    return;
+  }
+
+  err = uart_driver_install(this->uart_num_, /* UART RX ring buffer size. */ this->rx_buffer_size_,
+                            /* UART TX ring buffer size. If set to zero, driver will not use TX buffer, TX function will
+                               block task until all data have been sent out.*/
+                            0,
+                            /* UART event queue size/depth. */ 20, &(this->uart_event_queue_),
+                            /* Flags used to allocate the interrupt. */ 0);
+  if (err != ESP_OK) {
+    ESP_LOGW(TAG, "uart_driver_install failed: %s", esp_err_to_name(err));
+    this->mark_failed();
+    return;
+  }
+
   xSemaphoreGive(this->lock_);
 }
 
+void IDFUARTComponent::load_settings(bool dump_config) {
+  uart_config_t uart_config = this->get_config_();
+  esp_err_t err = uart_param_config(this->uart_num_, &uart_config);
+  if (err != ESP_OK) {
+    ESP_LOGW(TAG, "uart_param_config failed: %s", esp_err_to_name(err));
+    this->mark_failed();
+    return;
+  } else if (dump_config) {
+    ESP_LOGCONFIG(TAG, "UART %u was reloaded.", this->uart_num_);
+    this->dump_config();
+  }
+}
+
 void IDFUARTComponent::dump_config() {
-  ESP_LOGCONFIG(TAG, "UART Bus:");
-  ESP_LOGCONFIG(TAG, "  Number: %u", this->uart_num_);
+  ESP_LOGCONFIG(TAG, "UART Bus %u:", this->uart_num_);
   LOG_PIN("  TX Pin: ", tx_pin_);
   LOG_PIN("  RX Pin: ", rx_pin_);
   LOG_PIN("  CTS Pin: ", cts_pin_);
@@ -146,11 +183,13 @@ void IDFUARTComponent::dump_config() {
   if (this->rx_pin_ != nullptr) {
     ESP_LOGCONFIG(TAG, "  RX Buffer Size: %u", this->rx_buffer_size_);
   }
-  ESP_LOGCONFIG(TAG, "  Baud Rate: %u baud", this->baud_rate_);
-  ESP_LOGCONFIG(TAG, "  Data Bits: %u", this->data_bits_);
-  ESP_LOGCONFIG(TAG, "  Parity: %s", LOG_STR_ARG(parity_to_str(this->parity_)));
-  ESP_LOGCONFIG(TAG, "  Stop bits: %u", this->stop_bits_);
-  ESP_LOGCONFIG(TAG, "  Hardware Flow Control: %s", LOG_STR_ARG(hw_flowctrl_to_str(this->hw_flowctrl_)));
+  ESP_LOGCONFIG(TAG,
+                "  Baud Rate: %" PRIu32 " baud\n"
+                "  Data Bits: %u\n"
+                "  Parity: %s\n"
+                "  Stop bits: %u",
+                "  Hardware Flow Control: %s",
+                this->baud_rate_, this->data_bits_, LOG_STR_ARG(parity_to_str(this->parity_)), this->stop_bits_, LOG_STR_ARG(hw_flowctrl_to_str(this->hw_flowctrl_)));
   this->check_logger_conflict();
 }
 
@@ -169,10 +208,10 @@ bool IDFUARTComponent::peek_byte(uint8_t *data) {
   if (!this->check_read_timeout_())
     return false;
   xSemaphoreTake(this->lock_, portMAX_DELAY);
-  if (this->has_peek_)
+  if (this->has_peek_) {
     *data = this->peek_byte_;
-  else {
-    int len = uart_read_bytes(this->uart_num_, data, 1, 20 / portTICK_RATE_MS);
+  } else {
+    int len = uart_read_bytes(this->uart_num_, data, 1, 20 / portTICK_PERIOD_MS);
     if (len == 0) {
       *data = 0;
     } else {
@@ -196,7 +235,7 @@ bool IDFUARTComponent::read_array(uint8_t *data, size_t len) {
     this->has_peek_ = false;
   }
   if (length_to_read > 0)
-    uart_read_bytes(this->uart_num_, data, length_to_read, 20 / portTICK_RATE_MS);
+    uart_read_bytes(this->uart_num_, data, length_to_read, 20 / portTICK_PERIOD_MS);
   xSemaphoreGive(this->lock_);
 #ifdef USE_UART_DEBUGGER
   for (size_t i = 0; i < len; i++) {
@@ -219,7 +258,7 @@ int IDFUARTComponent::available() {
 }
 
 void IDFUARTComponent::flush() {
-  ESP_LOGVV(TAG, "    Flushing...");
+  ESP_LOGVV(TAG, "    Flushing");
   xSemaphoreTake(this->lock_, portMAX_DELAY);
   uart_wait_tx_done(this->uart_num_, portMAX_DELAY);
   xSemaphoreGive(this->lock_);
