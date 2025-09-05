@@ -43,5 +43,23 @@ const LogString *parity_to_str(UARTParityOptions parity) {
   }
 }
 
+const LogString *hw_flowctrl_to_str(UARTHardwareFlowControl hw_flowctrl) {
+  switch (hw_flowctrl) {
+    case UART_CONFIG_HW_FLOWCTRL_DISABLE:
+      return LOG_STR("DISABLE");
+    case UART_CONFIG_HW_FLOWCTRL_CTS:
+      return LOG_STR("CTS");
+    case UART_CONFIG_HW_FLOWCTRL_RTS:
+      return LOG_STR("RTS");
+    case UART_CONFIG_HW_FLOWCTRL_CTS_RTS:
+      return LOG_STR("CTS_RTS");
+    case UART_CONFIG_HW_FLOWCTRL_MAX:
+      return LOG_STR("MAX");
+    default:
+      return LOG_STR("UNKNOWN");
+  }
+}
+
+
 }  // namespace uart
 }  // namespace esphome

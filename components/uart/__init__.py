@@ -315,19 +315,19 @@ async def to_code(config):
     if CONF_RX_PIN in config:
         rx_pin = await cg.gpio_pin_expression(config[CONF_RX_PIN])
         cg.add(var.set_rx_pin(rx_pin))
-    # if CONF_CTS_PIN in config:
-    #     cts_pin = await cg.gpio_pin_expression(config[CONF_CTS_PIN])
-    #     cg.add(var.set_cts_pin(cts_pin))
-    # if CONF_RTS_PIN in config:
-    #     rts_pin = await cg.gpio_pin_expression(config[CONF_RTS_PIN])
-    #     cg.add(var.set_rts_pin(rts_pin))
+    if CONF_CTS_PIN in config:
+        cts_pin = await cg.gpio_pin_expression(config[CONF_CTS_PIN])
+        cg.add(var.set_cts_pin(cts_pin))
+    if CONF_RTS_PIN in config:
+        rts_pin = await cg.gpio_pin_expression(config[CONF_RTS_PIN])
+        cg.add(var.set_rts_pin(rts_pin))
     if CONF_PORT in config:
         cg.add(var.set_name(config[CONF_PORT]))
     cg.add(var.set_rx_buffer_size(config[CONF_RX_BUFFER_SIZE]))
     cg.add(var.set_stop_bits(config[CONF_STOP_BITS]))
     cg.add(var.set_data_bits(config[CONF_DATA_BITS]))
     cg.add(var.set_parity(config[CONF_PARITY]))
-    # cg.add(var.set_hw_flowctrl(config[CONF_HW_FLOWCTRL]))
+    cg.add(var.set_hw_flowctrl(config[CONF_HW_FLOWCTRL]))
 
     if CONF_DEBUG in config:
         await debug_to_code(config[CONF_DEBUG], var)
