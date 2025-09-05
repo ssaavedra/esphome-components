@@ -41,13 +41,35 @@ uart_config_t IDFUARTComponent::get_config_() {
       data_bits = UART_DATA_BITS_MAX;
       break;
   }
+  
+  uart_hw_flowcontrol_t hw_flowctrl;
+  switch (this->hw_flowctrl_) {
+    case UART_CONFIG_HW_FLOWCTRL_RTS:
+      hw_flowctrl = UART_HW_FLOWCTRL_RTS;
+      break;
+    case UART_CONFIG_HW_FLOWCTRL_CTS:
+      hw_flowctrl = UART_HW_FLOWCTRL_CTS;
+      break;
+    case UART_CONFIG_HW_FLOWCTRL_CTS_RTS:
+      hw_flowctrl = UART_HW_FLOWCTRL_CTS_RTS;
+      break;
+    case UART_CONFIG_HW_FLOWCTRL_MAX:
+      hw_flowctrl = UART_HW_FLOWCTRL_MAX;
+      break;
+    default:
+      hw_flowctrl = UART_HW_FLOWCTRL_DISABLE;
+      break;
+  }
 
   uart_config_t uart_config{};
   uart_config.baud_rate = this->baud_rate_;
   uart_config.data_bits = data_bits;
   uart_config.parity = parity;
   uart_config.stop_bits = this->stop_bits_ == 1 ? UART_STOP_BITS_1 : UART_STOP_BITS_2;
-  uart_config.flow_ctrl = UART_HW_FLOWCTRL_DISABLE;
+  uart_config.flow_ctrl = hw_flowctrl;
+  ESP_LOGD(TAG, "UART Config: baud_rate=%" PRIu32 ", data_bits=%u, stop_bits=%u, parity=%s, flow_ctrl=%s",
+           uart_config.baud_rate, uart_config.data_bits, uart_config.stop_bits,
+           LOG_STR_ARG(parity_to_str(uart_config.parity)), LOG_STR_ARG(hw_flowctrl_to_str(uart_config.flow_ctrl))));
   uart_config.source_clk = UART_SCLK_DEFAULT;
   uart_config.rx_flow_ctrl_thresh = 122;
 
