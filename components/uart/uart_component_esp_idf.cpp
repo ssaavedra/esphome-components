@@ -67,9 +67,8 @@ uart_config_t IDFUARTComponent::get_config_() {
   uart_config.parity = parity;
   uart_config.stop_bits = this->stop_bits_ == 1 ? UART_STOP_BITS_1 : UART_STOP_BITS_2;
   uart_config.flow_ctrl = hw_flowctrl;
-  ESP_LOGD(TAG, "UART Config: baud_rate=%" PRIu32 ", data_bits=%u, stop_bits=%u, parity=%s, flow_ctrl=%s",
-           uart_config.baud_rate, uart_config.data_bits, uart_config.stop_bits,
-           LOG_STR_ARG(parity_to_str(uart_config.parity)), LOG_STR_ARG(hw_flowctrl_to_str(uart_config.flow_ctrl))));
+  ESP_LOGD(TAG, "UART Config: baud_rate=%" PRIu32 ", data_bits=%u, stop_bits=%u, parity=%d, flow_ctrl=%d",
+           uart_config.baud_rate, uart_config.data_bits, uart_config.stop_bits, uart_config.parity, uart_config.flow_ctrl);
   uart_config.source_clk = UART_SCLK_DEFAULT;
   uart_config.rx_flow_ctrl_thresh = 122;
 
